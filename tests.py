@@ -37,8 +37,8 @@ def test_cl_works(ctx, queue):
 
 
 def test_clbase():
-    n = 16
     class Foo(util.CLBase):
+        n = 16
         source = """
         {prefix} add({args}) {{ z[0] = x[0] + y[0]; }}
         {prefix} sub({args}) {{ z[0] = x[0] - y[0]; }}
@@ -46,9 +46,11 @@ def test_clbase():
                 args=', '.join(['__global float *%s' % s for s in 'xyz']))
         kernels = 'add sub'.split()
         x = util.Array((n, ), )
-        y = util.Array((n, ), )
-        z = util.Array((n, ), )
-    foo = Foo()
+        y = util.Array(('m', ), )
+        z = util.Array(('n', ), )
+        def __init__(self, m):
+            self.m = m
+    foo = Foo(Foo.n)
     ctx, queue = util.context_and_queue(util.create_cpu_context())
     foo.init_cl(ctx, queue)
     for name in 'add sub x y z'.split():
@@ -56,7 +58,7 @@ def test_clbase():
     for name in 'xyz':
         arr = getattr(foo, name)
         assert isinstance(arr, util.pyopencl.array.Array)
-        assert arr.shape == (n, )
-    foo.sub(foo.queue, (n, ), None, foo.x.data, foo.y.data, foo.z.data)
+        assert arr.shape == (Foo.n, )
+    foo.sub(foo.queue, (Foo.n, ), None, foo.x.data, foo.y.data, foo.z.data)
     x, y, z = [getattr(foo, name).get() for name in 'xyz']
-    assert all((x - y) == z)
+    assert np.allclose(x - y, z)

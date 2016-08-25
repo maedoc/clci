@@ -1,4 +1,5 @@
 
+import six
 import os.path
 import inspect
 import pyopencl
@@ -53,21 +54,26 @@ class CLBase(object):
 
     def effect_shape(self, name, shape):
         "Compute effective array shapes."
-        # TODO lookup rt dims, etc
-        return shape
+        # lookup rt dims, etc
+        new_shape = []
+        for dim in shape:
+            if isinstance(dim, str):
+                dim = int(getattr(self, dim))
+            new_shape.append(dim)
+        return tuple(new_shape)
 
     def init_cl(self, context, queue):
         "Initialize CL resources according to attributes in class decl."
         self.context = context
         self.queue = queue
-
+        # build program from source
         if hasattr(self, 'source'):
             self.program = pyopencl.Program(
                     self.context, self.source).build()
-
+        # pull out kernels
         for name in getattr(self, 'kernels', []):
             setattr(self, name, getattr(self.program, name))
-
+        # setup data
         for name in dir(self):
             val = getattr(self, name)
             if isinstance(val, Array):
