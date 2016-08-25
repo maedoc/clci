@@ -15,6 +15,10 @@
 
 import sys
 import os
+import os.path
+
+# add clci modules to path
+sys.path.append(os.path.join(os.getcwd(), '..'))
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
