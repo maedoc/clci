@@ -1,14 +1,24 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+# Taken from PyOpenCL's homepage
+
 from __future__ import absolute_import, print_function
 import numpy as np
 import pyopencl as cl
 
+
+print('avail OpenCL platforms/devices:')
+for platform in cl.get_platforms():
+    for device in platform.get_devices():
+        print(' - %r on %r' % (device.name, platform.name))
+
+assert device
+
 a_np = np.random.rand(50000).astype(np.float32)
 b_np = np.random.rand(50000).astype(np.float32)
 
-ctx = cl.create_some_context()
+ctx = cl.Context([device])
 queue = cl.CommandQueue(ctx)
 
 mf = cl.mem_flags
