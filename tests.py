@@ -1,27 +1,26 @@
+
 from __future__ import absolute_import, print_function
 import numpy as np
 import pyopencl as cl
+import util
 
 
-def test_cl_works():
+def with_ctx_queue(f):
+    "Decorator to pass build and pass context & queue."
+    def _(*args, **kwds):
+        ctx, queue = util.context_and_queue(util.create_cpu_context())
+        return f(ctx, queue, *args, **kwds)
+    return _
 
-    print('avail OpenCL platforms/devices:')
-    for platform in cl.get_platforms():
-        for device in platform.get_devices():
-            print(' - %r on %r' % (device.name, platform.name))
 
-    assert device
-
+@with_ctx_queue
+def test_cl_works(ctx, queue):
+    "Smoke test that CL works, from PyOpenCL docs."
     a_np = np.random.rand(50000).astype(np.float32)
     b_np = np.random.rand(50000).astype(np.float32)
-
-    ctx = cl.Context([device])
-    queue = cl.CommandQueue(ctx)
-
     mf = cl.mem_flags
     a_g = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=a_np)
     b_g = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=b_np)
-
     prg = cl.Program(ctx, """
     __kernel void sum(
         __global const float *a_g, __global const float *b_g, __global float *res_g)
@@ -30,12 +29,34 @@ def test_cl_works():
       res_g[gid] = a_g[gid] + b_g[gid];
     }
     """).build()
-
     res_g = cl.Buffer(ctx, mf.WRITE_ONLY, a_np.nbytes)
     prg.sum(queue, a_np.shape, None, a_g, b_g, res_g)
-
     res_np = np.empty_like(a_np)
     cl.enqueue_copy(queue, res_np, res_g)
-
-    # Check on CPU with Numpy:
     assert (np.linalg.norm(res_np - (a_np + b_np))) == 0.0
+
+
+def test_clbase():
+    n = 16
+    class Foo(util.CLBase):
+        source = """
+        {prefix} add({args}) {{ z[0] = x[0] + y[0]; }}
+        {prefix} sub({args}) {{ z[0] = x[0] - y[0]; }}
+        """.format(prefix='__kernel void',
+                args=', '.join(['__global float *%s' % s for s in 'xyz']))
+        kernels = 'add sub'.split()
+        x = util.Array((n, ), )
+        y = util.Array((n, ), )
+        z = util.Array((n, ), )
+    foo = Foo()
+    ctx, queue = util.context_and_queue(util.create_cpu_context())
+    foo.init_cl(ctx, queue)
+    for name in 'add sub x y z'.split():
+        assert hasattr(foo, name)
+    for name in 'xyz':
+        arr = getattr(foo, name)
+        assert isinstance(arr, util.pyopencl.array.Array)
+        assert arr.shape == (n, )
+    foo.sub(foo.queue, (n, ), None, foo.x.data, foo.y.data, foo.z.data)
+    x, y, z = [getattr(foo, name).get() for name in 'xyz']
+    assert all((x - y) == z)
