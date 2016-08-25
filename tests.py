@@ -1,9 +1,10 @@
 
 from __future__ import absolute_import, print_function
 import numpy as np
+import numpy.testing as npt
 import pyopencl as cl
 import util
-
+import model
 
 def with_ctx_queue(f):
     "Decorator to pass build and pass context & queue."
@@ -69,3 +70,45 @@ def test_clbase():
     foo.sub(foo.queue, (Foo.n, ), None, foo.x.data, foo.y.data, foo.z.data)
     # check result
     assert np.allclose(x - y, foo.z.get())
+
+
+@with_ctx_queue
+def test_model(ctx, queue):
+    class HMR(model.Model):
+        "Hindmarsh-Rose model, cf http://www2.gsu.edu/~matals/hm_all_s.pdf"
+        params = 'a b I c d e s x0'.split()
+        auxs = [
+            ('x2', 'x * x'),
+        ]
+        state_derivs = [
+            ('x', 'y - a * x * x2 + b * x2 + I - z'),
+            ('y', 'c - d * x2 - y'),
+            ('z', 'e * (s * (x - x0) - z)'),
+        ]
+        consts = { 'a': 1.0, 'b': 3.0, 'c': -3.0, 'd': 5.0, 's': 4.0 }
+    n = 16
+    class HMR_Data(util.CLBase):
+        state = util.Array((3, n))
+        param = util.Array((3, n))
+        cvars = util.Array((1, n)) # TODO
+        deriv = util.Array((3, n))
+    hmr = HMR()
+    hmr.init_cl(ctx, queue)
+    hmrd = HMR_Data()
+    hmrd.init_cl(ctx, queue)
+    hmrd.state[:] = np.random.rand(*hmrd.state.shape).astype('f')
+    hmrd.param[:] = np.random.rand(*hmrd.param.shape).astype('f')
+    x, y, z = hmrd.state.get()
+    a, b, c, d, s = 1.0, 3.0, -3.0, 5.0, 4.0
+    I, e, x0 = hmrd.param.get()
+    x2 = x * x
+    deriv = np.array([
+        y - a * x * x2 + b * x2 + I - z,
+        c - d * x2 - y,
+        e * (s * (x - x0) - z),
+    ])
+    assert deriv.shape == hmrd.deriv.shape
+    hmr.dfun(hmr.queue, (n, ), None, np.int32(n),
+            hmrd.state.data, hmrd.param.data, hmrd.cvars.data,
+            hmrd.deriv.data)
+    npt.assert_allclose(deriv, hmrd.deriv.get(), 1e-5)
