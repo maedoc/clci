@@ -37,6 +37,7 @@ def test_cl_works(ctx, queue):
 
 
 def test_clbase():
+    # make class which uses features of CLBase
     class Foo(util.CLBase):
         n = 16
         source = """
@@ -47,19 +48,24 @@ def test_clbase():
                 args=', '.join(['__global float *%s' % s for s in 'xyz']))
         kernels = 'add sub'.split()
         x = util.Array((n, ), )
-        y = util.Array(('m', ), )
+        y = util.Array(('m', ), ) # shape resolved at init_cl time
         z = util.Array(('n', ), )
         def __init__(self, m):
             self.m = m
     foo = Foo(Foo.n)
     ctx, queue = util.context_and_queue(util.create_cpu_context())
     foo.init_cl(ctx, queue)
+    # check have attrs for kernels (and arrays)
     for name in 'add sub x y z'.split():
         assert hasattr(foo, name)
+    # check arrays were built with correct type & shape
     for name in 'xyz':
         arr = getattr(foo, name)
         assert isinstance(arr, util.pyopencl.array.Array)
         assert arr.shape == (Foo.n, )
+        assert arr.dtype == np.float32
+    # run a kernel
+    foo.x[:], foo.y[:] = x, y = np.random.rand(2, Foo.n).astype('f')
     foo.sub(foo.queue, (Foo.n, ), None, foo.x.data, foo.y.data, foo.z.data)
-    x, y, z = [getattr(foo, name).get() for name in 'xyz']
-    assert np.allclose(x - y, z)
+    # check result
+    assert np.allclose(x - y, foo.z.get())
