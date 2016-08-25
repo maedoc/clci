@@ -40,8 +40,9 @@ def test_clbase():
     class Foo(util.CLBase):
         n = 16
         source = """
-        {prefix} add({args}) {{ z[0] = x[0] + y[0]; }}
-        {prefix} sub({args}) {{ z[0] = x[0] - y[0]; }}
+        #define i get_global_id(0)
+        {prefix} add({args}) {{ z[i] = x[i] + y[i]; }}
+        {prefix} sub({args}) {{ z[i] = x[i] - y[i]; }}
         """.format(prefix='__kernel void',
                 args=', '.join(['__global float *%s' % s for s in 'xyz']))
         kernels = 'add sub'.split()
