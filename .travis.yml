@@ -18,4 +18,4 @@ os:
 python:
   - "2.7"
   - "3.5"
-script: "./test.py"
+script: "py.test test.py"

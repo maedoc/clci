@@ -1,1 +1,2 @@
 pyopencl==2015.1
+pytest
